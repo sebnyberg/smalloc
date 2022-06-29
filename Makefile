@@ -14,8 +14,6 @@ ASANFLAGS  = -fsanitize=address
 ASANFLAGS += -fno-common
 ASANFLAGS += -fno-omit-frame-pointer
 
-OBJS = log/log.c sfs.c
-
 .PHONY: test
 test: tests.out
 	@./tests.out
