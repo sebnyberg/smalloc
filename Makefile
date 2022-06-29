@@ -8,14 +8,16 @@ CFLAGS += -pedantic
 CFLAGS += -Werror
 CFLAGS += -Wmissing-declarations
 CFLAGS += -DUNITY_SUPPORT_64 -DUNITY_OUTPUT_COLOR
-CFLAGS += -D_FILE_OFFSET_BITS=64
+# CFLAGS += -D_FILE_OFFSET_BITS=64
 
-ASANFLAGS  = -fsanitize=address
-ASANFLAGS += -fno-common
-ASANFLAGS += -fno-omit-frame-pointer
+# ASANFLAGS  = -fsanitize=address
+# ASANFLAGS += -fno-common
+# ASANFLAGS += -fno-omit-frame-pointer
+clean:
+	@rm -f *.o tests.out
 
 .PHONY: test
-test: tests.out
+test: clean tests.out
 	@./tests.out
 
 tests.out: buddy.c malloc_test.c

@@ -1,2 +1,5 @@
 # smalloc
-Some malloc
+
+Some malloc implementation.
+
+
