@@ -3,29 +3,103 @@
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
+#include <stdint.h>
 
 #include "malloc.h"
 
 #define DEBUG 1
+#define MAX(x, y) (x > y ? x : y)
 #define debug_print(...) \
 		do { if (DEBUG) fprintf(stderr, ##__VA_ARGS__); } while (0)
 
 // Total and min size must be a power of two
+// Important! If the total number of blocks exceed int32_t, then the allocmap
+// type must be changed. Also, the ratio of __MIN_SIZE to allocmap type
+// determines the amount of memory "waste" per alloced block. Larger and fewer
+// blocks result in much lower waste.
 #define __TOTAL_SIZE (1024*1024)
-#define __MIN_SIZE (32)
+#define __MIN_SIZE (64)
+#define __NBLOCKS (__TOTAL_SIZE/__MIN_SIZE)
 
 // Allocmap could be a bitmap, but it would make things more complicated.
-#define __ALLOCMAP_SIZE ((__TOTAL_SIZE/__MIN_SIZE)*2)
+#define __ALLOCMAP_SIZE ((__NBLOCKS)*2*sizeof(uint32_t))
 
 static char *mem;
-static char *memfree;
+
+// Memfree is a tree in 1d-form.
+//
+// For details on how memfree is updated as alloc and free happens, see each
+// respective function.
+static uint32_t *memfree;
+
+static inline size_t
+left_child(size_t idx)
+{
+  return idx*2 + 1;
+}
+
+static inline size_t
+right_child(size_t idx)
+{
+  return idx*2 + 2;
+}
+
+static inline size_t
+parent(size_t idx)
+{
+  return ((idx+1) >> 1) - 1;
+}
+
+static inline size_t
+is_pow2(size_t idx)
+{
+  // https://graphics.stanford.edu/~seander/bithacks.html#DetermineIfPowerOf2
+  return (idx & (idx - 1)) == 0;
+}
+
+static size_t
+pow2_ceil(size_t x)
+{
+  // https://graphics.stanford.edu/~seander/bithacks.html#RoundUpPowerOf2
+  x--;
+  x |= x >> 1;
+  x |= x >> 2;
+  x |= x >> 4;
+  x |= x >> 8;
+  x |= x >> 16;
+  x++;
+  return x;
+}
+
+// static inline size_t
+// tree_level(size_t idx)
+// {
+//   size_t level = 1;
+//   while (idx > 0) {
+//     level++;
+//     idx = (idx-1) >> 1;
+//   }
+//   return level;
+// }
 
 void
 __alloc_reset()
 {
   __alloc_init();
-  memset(memfree, 0, __ALLOCMAP_SIZE);
-  memfree[0] = 1;
+  /* Create the tree
+            __TOTAL_SIZE
+            /           \
+    __TOTAL_SIZE/2   __TOTAL_SIZE/2
+    /        \          /         \
+  ...       ...       ...         ...
+  */
+  size_t size = __TOTAL_SIZE*2;
+  for (size_t i = 0; i < 2 * __NBLOCKS - 1; i++) {
+    if (is_pow2(i+1)) {
+      size /= 2;
+    }
+    memfree[i] = size;
+  }
 }
 
 void
@@ -39,55 +113,10 @@ __alloc_init()
     perror("memory init err");
     exit(errno);
   }
-  memfree = mem + __TOTAL_SIZE;
-  memset(memfree, 0, __ALLOCMAP_SIZE);
-  memfree[0] = 1;
+  memfree = (uint32_t *)(mem + __TOTAL_SIZE);
+  __alloc_reset();
 }
 
-size_t
-__tree_level(size_t idx)
-{
-  size_t level = 1;
-  while (idx > 0) {
-    level++;
-    idx = (idx-1) >> 1;
-  }
-  return level;
-}
-
-static inline size_t
-left_child(size_t idx)
-{
-  return (idx >> 1) + 1;
-}
-
-static inline size_t
-right_child(size_t idx)
-{
-  return (idx >> 1) + 2;
-}
-
-static inline size_t
-parent(size_t idx)
-{
-  return ((idx+1) >> 1) - 1;
-}
-
-// Taken from
-// https://graphics.stanford.edu/~seander/bithacks.html#RoundUpPowerOf2
-static
-size_t
-__pow2_ceil(size_t x)
-{
-  x--;
-  x |= x >> 1;
-  x |= x >> 2;
-  x |= x >> 4;
-  x |= x >> 8;
-  x |= x >> 16;
-  x++;
-  return x;
-}
 
 void*
 smalloc(size_t size)
@@ -96,92 +125,28 @@ smalloc(size_t size)
 
   __alloc_init();
 
-  size = __pow2_ceil(size);
-  if (size < __MIN_SIZE) {
-    size = __MIN_SIZE;
-  }
-  if (size >= __TOTAL_SIZE)  {
+  size = MAX(pow2_ceil(size), __MIN_SIZE);
+
+  if (size > memfree[0]) {
     errno = ENOMEM;
     return NULL;
   }
-  debug_print("finding block of size: %ld\n", size);
 
-  // Try each size from small to large until a free block is found
-  ssize_t block_idx = -1;
-  ssize_t block_size = -1;
-  for (ssize_t k = size; block_idx == -1 && k <= __TOTAL_SIZE; k <<= 1) {
-    size_t nelem = __TOTAL_SIZE / k;
-    for (size_t i = nelem - 1; i < nelem-1+nelem; i++) {
-      if (memfree[i] == 1) {
-        block_idx = i;
-        block_size = k;
-        break;
-      }
+  // Find block (if any) that accomodates the request
+  ssize_t idx = 0;
+  size_t block_size = __TOTAL_SIZE;
+
+  for (; block_size != size; block_size /= 2) {
+    if (memfree[left_child(idx)] >= size) {
+      idx = left_child(idx);
+    } else {
+      idx = right_child(idx);
     }
   }
-  if (block_idx == -1) {
-    errno = ENOMEM;
-    return NULL;
-  }
-  debug_print("found block of size %ld at index %ld\n", block_size, block_idx);
 
-  size_t nelem = (__TOTAL_SIZE / block_size);
-  block_idx -= (nelem - 1);
-  void *addr = (void *) (mem + block_idx);
-  debug_print("return addr: %p\n", addr);
-
-  // Mark block as unavailable
-  memfree[block_idx] = 0;
-
-  /* Mark leftover blocks as available
-
-  Consider this tree with __TOTAL_SIZE = 4:
-
-      (4)            1
-                   /   \
-      (2)        0       0
-               /  \    /   \
-      (1)     0     0  0     0
-
-  The buddy algorithm finds the first free (marked as 1) address such that its
-  size is larger than or equal to the requested (adjusted) size.
-
-  The block is marked as occupied (0). Then the remainder is used to mark new
-  free blocks until the remainder is zero.
-
-  For example, allocating a 1-byte segment occupies the first address, then
-  marks a 2-byte and 1-byte segment as free:
-
-      (4)            0
-                   /    \
-      (2)        0        1
-               /  \     /   \
-      (1)     0     1  0     0
-
-  Mallocing a 3-byte segment gives:
-
-      (4)            0
-                   /    \
-      (2)        0        0
-               /  \     /   \
-      (1)     0     0  0     1
-  */
-
- ssize_t remainder = block_size - size;
- block_size >>= 1;
- while (remainder > 0) {
-  size_t r = right_child(block_idx);
-  if (remainder >= block_size) {
-    // Mark right child as free and go left
-    memfree[r] = 1;
-    remainder -= block_size;
-    block_idx = r-1;
-  } else {
-    // Go right
-    block_idx = r;
-  }
-  block_size >>= 1;
- }
+  memfree[idx] = 0;
+  size_t offset_bytes = block_size*(idx + 1) - __TOTAL_SIZE;
+  void *addr = (void *) (mem + offset_bytes);
 
   return addr;
 }
@@ -192,7 +157,7 @@ srealloc(void *ptr, size_t size)
   (void) ptr;
   (void) size;
   __alloc_init();
-  size = __pow2_ceil(size);
+  size = pow2_ceil(size);
 
   return NULL;
 }
@@ -203,7 +168,7 @@ void
   (void) nmemb;
   (void) size;
   __alloc_init();
-  size = __pow2_ceil(size);
+  size = pow2_ceil(size);
 
   return NULL;
 }
@@ -212,49 +177,6 @@ void
 sfree(void *ptr)
 {
   (void) ptr;
-
-  /*
-  Consider this tree with __TOTAL_SIZE = 8:
-
-
-                          0                 = 8
-                      /      \
-                   1            0           = 4
-                /    \        /    \
-              0       0      1       0      = 2
-            /  \    /  \    /  \    /  \
-           0    0  0    0  0    0  1    0   = 1
-
-
-                          0                 = 8
-                      /      \
-                   0            0           = 4
-                /    \        /    \
-              0       0      1       0      = 2
-            /  \    /  \    /  \    /  \
-           0    0  0    1  0    0  1    0   = 1
-
-  Let's say we receive the address 0.
-
-  So we mark the left child as available, then go to the right node:
-
-                     0
-                   /   \
-          free > 1       0
-               /  \    /   \
-              0     0  0     0
-
-  There's still 1 size left over, so we mark the left child as available:
-
-                  0
-                /   \
-              1       0
-            /  \    /   \
-          0     0  1     0
-                   ^     ^ occupied block
-                 free
-
-  */
 
   __alloc_init();
 }

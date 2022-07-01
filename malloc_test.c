@@ -13,14 +13,6 @@ void tearDown(void)
   // __alloc_reset();
 }
 
-static void test_tree_level(void)
-{
-  TEST_ASSERT_EQUAL(1, __tree_level(0));
-  TEST_ASSERT_EQUAL(2, __tree_level(1));
-  TEST_ASSERT_EQUAL(2, __tree_level(2));
-  TEST_ASSERT_EQUAL(3, __tree_level(3));
-}
-
 static void test_happy(void)
 {
   char *greeting = smalloc(10);
@@ -54,7 +46,6 @@ int main(void)
 {
   UnityBegin("buddy.c");
 
-  RUN_TEST(test_tree_level);
   RUN_TEST(test_happy);
   // RUN_TEST(test_malloc_zero);
 

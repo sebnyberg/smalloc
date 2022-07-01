@@ -1,8 +1,5 @@
 #include <stdlib.h>
 
-// __tree_level finds the level of a tree given an index in the 1d array.
-size_t __tree_level(size_t idx);
-
 // __alloc_reset ensures that memory is initialized and free.
 void __alloc_reset();
 
