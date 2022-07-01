@@ -26,11 +26,22 @@
 
 static char *mem;
 
-// Memfree is a tree in 1d-form.
+// Spacetree is a tree in 1d-form.
 //
-// For details on how memfree is updated as alloc and free happens, see each
-// respective function.
-static uint32_t *memfree;
+// Each node in the tree contains the maximum size of any one block in its
+// subtree, including itself. Thus, spacetree[0] = __TOTAL_SIZE.
+//
+// On malloc, spacetree[0] signals whether the request can be completed or not.
+// That is, if spacetree[0] is >= requested size, then there exists at least one
+// block in the tree which is large enough to accomodate the request.
+// The allocated block is set to size zero, and its parents are updated
+// accordingly.
+//
+// On free, the lowest block with size zero that starts with the given address
+// is the block to free. On free, if the node and its sibling (its buddy) have
+// equal size, the parent is reset to its original size (that of both siblings).
+//
+static uint32_t *spacetree;
 
 static inline size_t
 left_child(size_t idx)
@@ -47,7 +58,7 @@ right_child(size_t idx)
 static inline size_t
 parent(size_t idx)
 {
-  return ((idx+1) >> 1) - 1;
+  return ((idx+1) / 2) - 1;
 }
 
 static inline size_t
@@ -71,21 +82,9 @@ pow2_ceil(size_t x)
   return x;
 }
 
-// static inline size_t
-// tree_level(size_t idx)
-// {
-//   size_t level = 1;
-//   while (idx > 0) {
-//     level++;
-//     idx = (idx-1) >> 1;
-//   }
-//   return level;
-// }
-
 void
-__alloc_reset()
+__alloc_reset_tree()
 {
-  __alloc_init();
   /* Create the tree
             __TOTAL_SIZE
             /           \
@@ -98,7 +97,7 @@ __alloc_reset()
     if (is_pow2(i+1)) {
       size /= 2;
     }
-    memfree[i] = size;
+    spacetree[i] = size;
   }
 }
 
@@ -113,8 +112,8 @@ __alloc_init()
     perror("memory init err");
     exit(errno);
   }
-  memfree = (uint32_t *)(mem + __TOTAL_SIZE);
-  __alloc_reset();
+  spacetree = (uint32_t *)(mem + __TOTAL_SIZE);
+  __alloc_reset_tree();
 }
 
 
@@ -127,26 +126,34 @@ smalloc(size_t size)
 
   size = MAX(pow2_ceil(size), __MIN_SIZE);
 
-  if (size > memfree[0]) {
+  if (size > spacetree[0]) {
     errno = ENOMEM;
     return NULL;
   }
 
-  // Find block (if any) that accomodates the request
+  // Find leftmost block that accomodates the request
   ssize_t idx = 0;
   size_t block_size = __TOTAL_SIZE;
-
   for (; block_size != size; block_size /= 2) {
-    if (memfree[left_child(idx)] >= size) {
+    if (spacetree[left_child(idx)] >= size) {
       idx = left_child(idx);
     } else {
       idx = right_child(idx);
     }
   }
 
-  memfree[idx] = 0;
-  size_t offset_bytes = block_size*(idx + 1) - __TOTAL_SIZE;
+  spacetree[idx] = 0;
+
+  // Each level in the tree is offset by its number of nodes - 1.
+  // Thus, multiplying its block size with (idx+1) adds the total size + offset.
+  size_t offset_bytes = block_size * (idx + 1) - __TOTAL_SIZE;
   void *addr = (void *) (mem + offset_bytes);
+
+  // Update tree
+  while (idx > 0) {
+    idx = parent(idx);
+    spacetree[idx] = MAX(spacetree[left_child(idx)], spacetree[right_child(idx)]);
+  }
 
   return addr;
 }
@@ -154,29 +161,100 @@ smalloc(size_t size)
 void*
 srealloc(void *ptr, size_t size)
 {
-  (void) ptr;
-  (void) size;
-  __alloc_init();
-  size = pow2_ceil(size);
+  if (ptr == NULL) {
+    return smalloc(size);
+  }
+  if (size == 0) {
+    free(ptr);
+  }
 
-  return NULL;
+  __alloc_init();
+
+  // Out of bounds check
+  if (ptr < (void *)mem || ptr >= (void *)(mem + __TOTAL_SIZE)) {
+    errno = EINVAL;
+    return NULL;
+  }
+
+  // Determine old size
+  ssize_t idx = (size_t)((char *)ptr - mem);
+  idx += (__NBLOCKS - 1);
+  uint32_t old_size = __MIN_SIZE;
+  while (idx > 0 && spacetree[idx] != 0) {
+    idx = parent(idx);
+    old_size *= 2;
+  }
+
+  if (spacetree[idx] != 0) {
+    // Could not find block pointed to by ptr
+    return NULL;
+  }
+  if (size <= old_size) {
+    return ptr;
+  }
+
+  void *new_ptr = smalloc(size);
+  if (new_ptr == NULL) {
+    // errno already set by malloc
+    return NULL;
+  }
+
+  memcpy(new_ptr, ptr, old_size);
+  sfree(ptr);
+  return new_ptr;
 }
 
 void
 *scalloc(size_t nmemb, size_t size)
 {
-  (void) nmemb;
-  (void) size;
-  __alloc_init();
-  size = pow2_ceil(size);
-
-  return NULL;
+  if (nmemb == 0 || size == 0) {
+    return NULL;
+  }
+  size_t rqsize = nmemb * size;
+  if (rqsize / nmemb != size) {
+    errno = EOVERFLOW;
+    return NULL;
+  }
+  void* ptr = smalloc(rqsize);
+  if (ptr == NULL) {
+    return ptr;
+  }
+  memset(ptr, 0, rqsize);
+  return ptr;
 }
 
 void
 sfree(void *ptr)
 {
-  (void) ptr;
+  // Out of bounds check
+  if (ptr < (void *)mem || ptr >= (void *)(mem + __TOTAL_SIZE)) {
+    return;
+  }
+  // Note: I assume there is no way to send an address which is not on an
+  // address boundary. Nobody in their right mind would attempt to hack such a
+  // thing in C, would they?
+
+  ssize_t idx = (size_t)((char *)ptr - mem);
+  idx += (__NBLOCKS - 1);
+  uint32_t size = __MIN_SIZE;
+  while (idx > 0 && spacetree[idx] != 0) {
+    idx = parent(idx);
+    size *= 2;
+  }
+  spacetree[idx] = size;
+  size_t l, r;
+  while (idx > 0) {
+    idx = parent(idx);
+
+    l = spacetree[left_child(idx)];
+    r = spacetree[right_child(idx)];
+    if (l == r) {
+      spacetree[idx] = size;
+    } else {
+      spacetree[idx] = MAX(l, r);
+    }
+    size *= 2;
+  }
 
   __alloc_init();
 }
