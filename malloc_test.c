@@ -1,5 +1,6 @@
 #include "unity/unity.h"
 
+#include <errno.h>
 #include <stdio.h>
 #include <string.h>
 #include "malloc.h"
@@ -16,6 +17,7 @@ void tearDown(void)
 
 static void test_calloc(void)
 {
+  // TEST_IGNORE();
   // malloc + free + malloc should retain the previous value
   char *ptr;
   TEST_ASSERT_NOT_NULL((ptr = smalloc(10)));
@@ -31,6 +33,13 @@ static void test_calloc(void)
   TEST_ASSERT_NOT_NULL((ptr3 = scalloc(10, 1)));
   TEST_ASSERT_EQUAL_STRING("", ptr3);
   TEST_ASSERT_EQUAL(ptr2, ptr3);
+}
+
+static void test_calloc_overflow(void)
+{
+  void *ptr = scalloc(1<<31, 1<<31);
+  TEST_ASSERT_NULL(ptr);
+  TEST_ASSERT_EQUAL(errno, EOVERFLOW);
 }
 
 static void test_malloc_happy(void)
@@ -71,6 +80,7 @@ int main(void)
   UnityBegin("buddy.c");
 
   RUN_TEST(test_calloc);
+  RUN_TEST(test_calloc_overflow);
   RUN_TEST(test_malloc_happy);
   RUN_TEST(test_malloc_100_1MB);
   RUN_TEST(test_malloc_size_zero);
