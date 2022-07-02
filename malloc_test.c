@@ -15,24 +15,17 @@ void tearDown(void)
   __alloc_reset_tree();
 }
 
-static void test_calloc(void)
+static void test_calloc_many(void)
 {
   // TEST_IGNORE();
-  // malloc + free + malloc should retain the previous value
   char *ptr;
-  TEST_ASSERT_NOT_NULL((ptr = smalloc(10)));
-  strcpy(ptr, "test");
-  sfree(ptr);
-  char *ptr2;
-  TEST_ASSERT_NOT_NULL((ptr2 = smalloc(10)));
-  TEST_ASSERT_EQUAL_STRING("test", ptr2);
-  TEST_ASSERT_EQUAL(ptr, ptr2);
-  // malloc + free + calloc should reset the value
-  sfree(ptr);
-  char *ptr3;
-  TEST_ASSERT_NOT_NULL((ptr3 = scalloc(10, 1)));
-  TEST_ASSERT_EQUAL_STRING("", ptr3);
-  TEST_ASSERT_EQUAL(ptr2, ptr3);
+  for (size_t i = 0; i < 1e4; i++) {
+    ptr = scalloc(1024, 64);
+    TEST_ASSERT_NOT_NULL(ptr);
+    TEST_ASSERT_EQUAL_STRING("", ptr);
+    memset(ptr, 1, 1024*64);
+    sfree(ptr);
+  }
 }
 
 static void test_calloc_overflow(void)
@@ -58,13 +51,21 @@ static void test_malloc_happy(void)
   sfree(greeting2);
 }
 
-static void test_malloc_100_1MB(void)
+static void test_malloc_many(void)
 {
   // TEST_IGNORE();
-  for (size_t i = 0; i < 100000; i++) {
-    void *ptr = smalloc(1024*1024);
-    TEST_ASSERT_NOT_NULL(ptr);
-    sfree(ptr);
+  char *ptr[2];
+  for (size_t i = 0; i < 1e4; i++) {
+    ptr[0] = smalloc(1024*64);
+    TEST_ASSERT_NOT_NULL(ptr[0]);
+    strcpy(ptr[0], "hello");
+    ptr[1] = smalloc(1024*64);
+    TEST_ASSERT_NOT_NULL(ptr[1]);
+    strcpy(ptr[1], "hi");
+    TEST_ASSERT_EQUAL_STRING("hello", ptr[0]);
+    TEST_ASSERT_EQUAL_STRING("hi", ptr[1]);
+    sfree(ptr[0]);
+    sfree(ptr[1]);
   }
 }
 
@@ -74,16 +75,30 @@ static void test_malloc_size_zero(void)
   TEST_ASSERT_NULL(smalloc(0));
 }
 
+static void test_realloc_zero_size_free(void)
+{
+  // TEST_IGNORE();
+  char *ptr;
+  for (size_t i = 0; i < 1e4; i++) {
+    ptr = srealloc(NULL, 1024*64);
+    TEST_ASSERT_NOT_NULL(ptr);
+    ptr = srealloc(ptr, 1024*256);
+    TEST_ASSERT_NOT_NULL(ptr);
+    srealloc(ptr, 0);
+  }
+}
+
 
 int main(void)
 {
   UnityBegin("buddy.c");
 
-  RUN_TEST(test_calloc);
+  RUN_TEST(test_calloc_many);
   RUN_TEST(test_calloc_overflow);
   RUN_TEST(test_malloc_happy);
-  RUN_TEST(test_malloc_100_1MB);
+  RUN_TEST(test_malloc_many);
   RUN_TEST(test_malloc_size_zero);
+  RUN_TEST(test_realloc_zero_size_free);
 
   return UnityEnd();
 }

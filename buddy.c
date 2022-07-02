@@ -165,7 +165,8 @@ srealloc(void *ptr, size_t size)
     return smalloc(size);
   }
   if (size == 0) {
-    free(ptr);
+    sfree(ptr);
+    return NULL;
   }
 
   __alloc_init();
