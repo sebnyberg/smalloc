@@ -234,7 +234,8 @@ sfree(void *ptr)
   // address boundary. Nobody in their right mind would attempt to hack such a
   // thing in C, would they?
 
-  ssize_t idx = (size_t)((char *)ptr - mem);
+  ssize_t offset_bytes = (size_t)((char *)ptr - mem);
+  ssize_t idx = offset_bytes / (__MIN_SIZE);
   idx += (__NBLOCKS - 1);
   uint32_t size = __MIN_SIZE;
   while (idx > 0 && spacetree[idx] != 0) {
