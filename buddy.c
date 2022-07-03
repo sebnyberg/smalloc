@@ -163,13 +163,13 @@ free(void *ptr)
 			spacetree[idx] = MAX(l, r);
 		}
 	}
-	// debug_print("free ptr:%p largest_block:%d\n", ptr, spacetree[0]);
+	debug_print("free ptr:%p largest_block:%d\n", ptr, spacetree[0]);
 }
 
 void
 *realloc(void *ptr, size_t size)
 {
-	// debug_print("realloc ptr:%p to_size:%ld\n", ptr, size);
+	debug_print("realloc ptr:%p to_size:%ld\n", ptr, size);
 	if (ptr == NULL) {
 		return malloc(size);
 	}
@@ -189,16 +189,16 @@ void
 	}
 	if (spacetree[idx] != 0) {
 		// Could not find block pointed to by ptr
-		// debug_print("could not find block pointed to by ptr %p\n", ptr);
+		debug_print("could not find block pointed to by ptr %p\n", ptr);
 		return NULL;
 	}
 	if (size <= old_size) {
-		// debug_print("no alloc needed for realloc\n");
+		debug_print("no alloc needed for realloc\n");
 		return ptr;
 	}
 
 	void *new_ptr = malloc(size);
-	// debug_print("realloc addr:%p new_ptr:%p old_size:%ld new_size:%ld\n", ptr, new_ptr, old_size, size);
+	debug_print("realloc addr:%p new_ptr:%p old_size:%ld new_size:%ld\n", ptr, new_ptr, old_size, size);
 
 
 	if (new_ptr == NULL) {
@@ -215,7 +215,7 @@ void
 *calloc(size_t nmemb, size_t size)
 {
 	size_t rqsize = nmemb * size;
-	// debug_print("calloc size:%ld\n", rqsize);
+	debug_print("calloc size:%ld\n", rqsize);
 	void* ptr = malloc(rqsize);
 	if (ptr == NULL) {
 		return NULL;
