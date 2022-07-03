@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
 #include <stdint.h>
@@ -11,35 +12,13 @@
 
 #define MAX(x, y) (x > y ? x : y)
 
-// Total and min size must be a power of two
-// Important! If the total number of blocks exceed int32_t, then the allocmap
-// type must be changed. Also, the ratio of __MIN_SIZE to allocmap type
-// determines the amount of memory "waste" per alloced block. Larger and fewer
-// blocks result in much lower waste.
 #define __TOTAL_SIZE (1024*1024*32)
 #define __MIN_SIZE (8)
 #define __NBLOCKS (__TOTAL_SIZE/__MIN_SIZE)
 
-// Allocmap could be a bitmap, but it would make things more complicated.
 #define __ALLOCMAP_SIZE ((__NBLOCKS)*2*sizeof(uint32_t))
 
 static char *mem = NULL;
-
-// Spacetree is a tree in 1d-form.
-//
-// Each node in the tree contains the maximum size of any one block in its
-// subtree, including itself. Thus, spacetree[0] = __TOTAL_SIZE.
-//
-// On malloc, spacetree[0] signals whether the request can be completed or not.
-// That is, if spacetree[0] is >= requested size, then there exists at least one
-// block in the tree which is large enough to accomodate the request.
-// The allocated block is set to size zero, and its parents are updated
-// accordingly.
-//
-// On free, the lowest block with size zero that starts with the given address
-// is the block to free. On free, if the node and its sibling (its buddy) have
-// equal size, the parent is reset to its original size (that of both siblings).
-//
 static uint32_t *spacetree = NULL;
 
 static inline size_t
@@ -196,7 +175,7 @@ void
 	}
 	if (size == 0) {
 		free(ptr);
-		return ptr;
+		return NULL;
 	}
 
 	// Determine old size
