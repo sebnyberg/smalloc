@@ -12,34 +12,34 @@
 
 #define MAX(x, y) (x > y ? x : y)
 
-#define __TOTAL_SIZE (1024*1024*32)
+#define __TOTAL_SIZE (1024*1024*2)
 #define __MIN_SIZE (8)
 #define __NBLOCKS (__TOTAL_SIZE/__MIN_SIZE)
 
 #define __ALLOCMAP_SIZE ((__NBLOCKS)*2*sizeof(uint32_t))
 
-static char *mem = NULL;
+static uint8_t *mem = NULL;
 static uint32_t *spacetree = NULL;
 
-static inline size_t
+static size_t
 left_child(size_t idx)
 {
 	return idx*2 + 1;
 }
 
-static inline size_t
+static size_t
 right_child(size_t idx)
 {
 	return idx*2 + 2;
 }
 
-static inline size_t
+static size_t
 parent(size_t idx)
 {
 	return ((idx+1) / 2) - 1;
 }
 
-static inline size_t
+static size_t
 is_pow2(size_t idx)
 {
 	// https://graphics.stanford.edu/~seander/bithacks.html#DetermineIfPowerOf2
@@ -78,13 +78,13 @@ __alloc_init()
 	if (mem != NULL) {
 		return;
 	}
-	mem = (char *)sbrk(__TOTAL_SIZE);
+	mem = sbrk(__TOTAL_SIZE);
 	if (mem == (void*)-1)  {
 		errno = ENOMEM;
 		return;
 	}
 	spacetree = sbrk(__ALLOCMAP_SIZE);
-	debug_print("init data_addr: %p space_addr: %p\n", mem, (void*)spacetree);
+	// debug_print("init data_addr: %p space_addr: %p\n", mem, (void*)spacetree);
 	__alloc_reset_tree();
 }
 
@@ -103,7 +103,7 @@ malloc(size_t size)
 	size = MAX(pow2_ceil(size), __MIN_SIZE);
 
 	if (size > spacetree[0]) {
-		debug_print("size %ld larger than space in tree %d\n", size, spacetree[0]);
+		// debug_print("size %ld larger than space in tree %d\n", size, spacetree[0]);
 		// errno = ENOMEM;
 		return NULL;
 	}
@@ -122,7 +122,7 @@ malloc(size_t size)
 	spacetree[idx] = 0;
 
 	size_t offset_bytes = block_size * (idx + 1) - __TOTAL_SIZE;
-	void *addr = (void *) (mem + offset_bytes);
+	void *addr = (void *) ((char *)(mem) + offset_bytes);
 
 	// Update tree
 	for (ssize_t i = idx; i > 0;) {
@@ -130,7 +130,7 @@ malloc(size_t size)
 		spacetree[i] = MAX(spacetree[left_child(i)], spacetree[right_child(i)]);
 	}
 
-	debug_print("malloc ptr:%p, size:%ld block_size:%ld idx:%ld offset_bytes:%ld\n", addr, size, block_size, idx, offset_bytes);
+	// debug_print("malloc ptr:%p, size:%ld block_size:%ld idx:%ld offset_bytes:%ld\n", addr, size, block_size, idx, offset_bytes);
 	return addr;
 }
 
@@ -141,7 +141,7 @@ free(void *ptr)
 		return;
 	}
 
-	ssize_t offset_bytes = (ssize_t)((char *)ptr - mem);
+	ssize_t offset_bytes = (ssize_t)((char *)(ptr) - (char *)(mem));
 	ssize_t idx = offset_bytes / (__MIN_SIZE);
 	idx += (__NBLOCKS - 1);
 	size_t size = __MIN_SIZE;
@@ -163,13 +163,13 @@ free(void *ptr)
 			spacetree[idx] = MAX(l, r);
 		}
 	}
-	debug_print("free ptr:%p largest_block:%d\n", ptr, spacetree[0]);
+	// debug_print("free ptr:%p largest_block:%d\n", ptr, spacetree[0]);
 }
 
 void
 *realloc(void *ptr, size_t size)
 {
-	debug_print("realloc ptr:%p to_size:%ld\n", ptr, size);
+	// debug_print("realloc ptr:%p to_size:%ld\n", ptr, size);
 	if (ptr == NULL) {
 		return malloc(size);
 	}
@@ -179,7 +179,7 @@ void
 	}
 
 	// Determine old size
-	ssize_t offset_bytes = (size_t)((char *)ptr - mem);
+	ssize_t offset_bytes = (size_t)((char *)ptr - (char *)mem);
 	ssize_t idx = offset_bytes / (__MIN_SIZE);
 	idx += (__NBLOCKS - 1);
 	size_t old_size = __MIN_SIZE;
@@ -189,16 +189,16 @@ void
 	}
 	if (spacetree[idx] != 0) {
 		// Could not find block pointed to by ptr
-		debug_print("could not find block pointed to by ptr %p\n", ptr);
+		// debug_print("could not find block pointed to by ptr %p\n", ptr);
 		return NULL;
 	}
 	if (size <= old_size) {
-		debug_print("no alloc needed for realloc\n");
+		// debug_print("no alloc needed for realloc\n");
 		return ptr;
 	}
 
 	void *new_ptr = malloc(size);
-	debug_print("realloc addr:%p new_ptr:%p old_size:%ld new_size:%ld\n", ptr, new_ptr, old_size, size);
+	// debug_print("realloc addr:%p new_ptr:%p old_size:%ld new_size:%ld\n", ptr, new_ptr, old_size, size);
 
 
 	if (new_ptr == NULL) {
@@ -215,7 +215,7 @@ void
 *calloc(size_t nmemb, size_t size)
 {
 	size_t rqsize = nmemb * size;
-	debug_print("calloc size:%ld\n", rqsize);
+	// debug_print("calloc size:%ld\n", rqsize);
 	void* ptr = malloc(rqsize);
 	if (ptr == NULL) {
 		return NULL;
