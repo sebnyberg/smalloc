@@ -1,18 +1,19 @@
-CC := gcc
+CC := clang
 
 CFLAGS  = -std=gnu99
 CFLAGS += -g
+CFLAGS += -O3
+# CFLAGS += -fno-optimize-strlen
 CFLAGS += -Wall
 CFLAGS += -Wextra
 CFLAGS += -pedantic
 CFLAGS += -Werror
 CFLAGS += -Wmissing-declarations
 CFLAGS += -DUNITY_SUPPORT_64 -DUNITY_OUTPUT_COLOR
-# CFLAGS += -D_FILE_OFFSET_BITS=64
 
-# ASANFLAGS  = -fsanitize=address
-# ASANFLAGS += -fno-common
-# ASANFLAGS += -fno-omit-frame-pointer
+buddy:
+	$(CC) -shared -fPIC $(CFLAGS) buddy.c -o malloc.so
+
 clean:
 	@rm -f *.o tests.out
 
@@ -22,4 +23,4 @@ test: clean tests.out
 
 tests.out: buddy.c malloc_test.c
 	@echo Compiling $@
-	@$(CC) -o tests.out $(ASANFLAGS) $(CFLAGS) buddy.c malloc_test.c unity/unity.c
+	@$(CC) -o tests.out $(CFLAGS) -O0 buddy.c malloc_test.c unity/unity.c
