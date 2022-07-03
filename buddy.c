@@ -16,7 +16,7 @@
 #define __MIN_SIZE (8)
 #define __NBLOCKS (__TOTAL_SIZE/__MIN_SIZE)
 
-#define __ALLOCMAP_SIZE ((__NBLOCKS)*2*sizeof(uint32_t))
+#define __SPACETREE_SIZE ((__NBLOCKS)*2*sizeof(uint32_t))
 
 static uint8_t *mem = NULL;
 static uint32_t *spacetree = NULL;
@@ -83,7 +83,7 @@ __alloc_init()
 		errno = ENOMEM;
 		return;
 	}
-	spacetree = sbrk(__ALLOCMAP_SIZE);
+	spacetree = sbrk(__SPACETREE_SIZE);
 	// debug_print("init data_addr: %p space_addr: %p\n", mem, (void*)spacetree);
 	__alloc_reset_tree();
 }
