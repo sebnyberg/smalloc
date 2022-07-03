@@ -84,7 +84,7 @@ __alloc_init()
 		return;
 	}
 	spacetree = sbrk(__SPACETREE_SIZE);
-	// debug_print("init data_addr: %p space_addr: %p\n", mem, (void*)spacetree);
+	debug_print("init data_addr: %p space_addr: %p\n", (void*)mem, (void*)spacetree);
 	__alloc_reset_tree();
 }
 
@@ -103,8 +103,8 @@ malloc(size_t size)
 	size = MAX(pow2_ceil(size), __MIN_SIZE);
 
 	if (size > spacetree[0]) {
-		// debug_print("size %ld larger than space in tree %d\n", size, spacetree[0]);
-		// errno = ENOMEM;
+		debug_print("size %ld larger than space in tree %d\n", size, spacetree[0]);
+		errno = ENOMEM;
 		return NULL;
 	}
 
@@ -130,7 +130,7 @@ malloc(size_t size)
 		spacetree[i] = MAX(spacetree[left_child(i)], spacetree[right_child(i)]);
 	}
 
-	// debug_print("malloc ptr:%p, size:%ld block_size:%ld idx:%ld offset_bytes:%ld\n", addr, size, block_size, idx, offset_bytes);
+	debug_print("malloc ptr:%p, size:%ld block_size:%ld idx:%ld offset_bytes:%ld\n", addr, size, block_size, idx, offset_bytes);
 	return addr;
 }
 
