@@ -2,7 +2,7 @@ CC := gcc
 
 CFLAGS  = -std=gnu99
 CFLAGS += -g
-CFLAGS += -O0
+CFLAGS += -O3
 CFLAGS += -fno-optimize-strlen
 CFLAGS += -Wall
 CFLAGS += -Wextra
@@ -20,6 +20,12 @@ buddy:
 clean:
 	@rm -f *.o tests.out buddy.so ll.so
 
+tests-ll.out: clean ll.c malloc_test.c
+	@$(CC) -o tests-ll.out $(CFLAGS) ll.c malloc_test.c unity/unity.c
+
+tests-buddy.out: clean buddy.c malloc_test.c
+	@$(CC) -o tests-buddy.out $(CFLAGS) buddy.c malloc_test.c unity/unity.c
+
 .PHONY: test
 test: test-ll test-buddy
 
@@ -30,9 +36,3 @@ test-ll: tests-ll.out
 .PHONY: test-buddy
 test-buddy: tests-buddy.out
 	@./tests-buddy.out
-
-tests-ll.out: clean ll.c malloc_test.c
-	@$(CC) -o tests-ll.out $(CFLAGS) ll.c malloc_test.c unity/unity.c
-
-tests-buddy.out: clean buddy.c malloc_test.c
-	@$(CC) -o tests-buddy.out $(CFLAGS) buddy.c malloc_test.c unity/unity.c
