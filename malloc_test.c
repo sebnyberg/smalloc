@@ -62,7 +62,8 @@ static void test_malloc_many(void)
 static void test_malloc_size_zero(void)
 {
   // TEST_IGNORE();
-  TEST_ASSERT_NULL(malloc(0));
+  void *ptr = malloc(0);
+  TEST_ASSERT_NULL(ptr);
 }
 
 static void test_realloc_zero_size_free(void)
@@ -90,26 +91,16 @@ static void test_realloc_large(void)
   TEST_ASSERT_NOT_NULL(ptr);
 }
 
-static void test_things(void)
-{
-  char *ptr[100];
-  ptr[0] = malloc(8);
-  free(ptr[0]);
-}
-
-
 int main(void)
 {
   UnityBegin("buddy.c");
 
   RUN_TEST(test_calloc_many);
-  // RUN_TEST(test_calloc_overflow);
   RUN_TEST(test_malloc_happy);
   RUN_TEST(test_malloc_many);
   RUN_TEST(test_malloc_size_zero);
   RUN_TEST(test_realloc_large);
   RUN_TEST(test_realloc_zero_size_free);
-  RUN_TEST(test_things);
 
   return UnityEnd();
 }
