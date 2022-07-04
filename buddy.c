@@ -6,6 +6,59 @@
 #include <errno.h>
 #include <stdint.h>
 
+/*
+The buddy system is an allocation system which continuously splits a large
+portion of memory into small blocks (buddies).
+
+One way to visualize the system is as a tree of possible blocks-to-allocate. At
+the top level is a large block of __TOTAL_SIZE. At the second level are two
+blocks of __TOTAL_SIZE/2, and so on.
+
+To visualize the system, consider a buddy system of size 16:
+
+           16
+          /  \
+         8    8
+
+A request arrives to allocate 6 bytes of data. This is rounded up to 8 bytes.
+The top node states that there is at least one block of size 16 in the tree, so
+the request is valid. The tree is traversed to find a size 8 block.
+
+           16
+          /  \
+       > 8    8
+
+Once the block is allocated, each parent of the node is updated to contain
+MAX(l, r):
+
+MAX(8,8) = 8
+          /  \
+         0    8
+
+If a new request came in for size 16, it would be denied because the root states
+the maximum alloc'able block, which is 8.
+
+On free, the lowest-level size zero block with that address in the tree must be
+the alloc'ed block. The block's size is well known (it's only dependent on the
+level of the tree). Each parent is then updated to be either MAX(l, r), or l + r
+if both l and r have their original size. This is why it's called the "buddy
+system": two buddies join together to form larger blocks on free.
+
+           16  (16 because both sub-blocks have their original size)
+          /  \
+         8    8
+
+The tree is represented by a 1-dimensional array. For example, a size 32 tree
+may look like this:
+[ 32, 16, 16, 8, 8, 8, 8 ]
+
+A request for size 8 would result in this tree:
+[ 16, 8, 16, 0, 8, 8, 8 ]
+
+The recipes for finding parents, children, the length of the array, size of a
+block on a certain level etc, requires a piece of paper and patience.
+*/
+
 #define DEBUG 0
 #define debug_print(...) \
 		do { if (DEBUG) fprintf(stderr, ##__VA_ARGS__); } while (0)
@@ -13,7 +66,7 @@
 #define MAX(x, y) (x > y ? x : y)
 
 #define __TOTAL_SIZE (1024*1024*2)
-#define __MIN_SIZE (8)
+#define __MIN_SIZE (32)
 #define __NBLOCKS (__TOTAL_SIZE/__MIN_SIZE)
 
 #define __SPACETREE_SIZE ((__NBLOCKS)*2*sizeof(uint32_t))
